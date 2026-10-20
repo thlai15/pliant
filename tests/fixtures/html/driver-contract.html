@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Driver contract fixture</title>
+  <style>
+    #overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.3); display: none; }
+    body.blocked #overlay { display: block; }
+    #hidden { display: none; }
+  </style>
+  <script>
+    // Records whether an init script ran before this page's own scripts.
+    window.pageScriptSawInit = window.__initScriptRan === true
+  </script>
+</head>
+<body>
+  <main>
+    <label for="name">Name</label>
+    <input id="name" type="text" value="old value">
+
+    <label for="state">State</label>
+    <select id="state">
+      <option value="">Select state</option>
+      <option value="CA">California</option>
+      <option value="NY">New York</option>
+    </select>
+
+    <button id="counter" onclick="this.dataset.clicks = String(Number(this.dataset.clicks || 0) + 1)">Count</button>
+    <button id="go" onclick="location.hash = 'clicked'">Go</button>
+
+    <div role="dialog">
+      <button>Add to cart</button>
+      <button>Close</button>
+    </div>
+    <p id="hidden">Hidden text</p>
+  </main>
+  <div id="overlay"></div>
+</body>
+</html>

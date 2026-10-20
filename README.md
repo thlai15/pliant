@@ -13,7 +13,9 @@ layouts or page order differ between sites.
    order when a site's flow differs from the plan.
 3. `ElementExtractor` injects JavaScript into the page to list interactive elements with their
    labels, containers and event listeners.
-4. `SemanticMatcher` asks the LLM which element matches the step, and Playwright performs the action.
+4. `SemanticMatcher` asks the LLM which element matches the step, and the browser driver performs
+   the action. Playwright is the bundled driver; others plug in through the `BrowserDriver`
+   interface (see [docs/architecture.md](docs/architecture.md#browserdriver-srcdriverbrowserdriverts)).
 5. `ReportBuilder` and `HtmlReporter` record every step, screenshot and healing event and produce an
    HTML report.
 
@@ -48,6 +50,8 @@ npm run report -- --run-a reports/<run-id-1> --run-b reports/<run-id-2>
 |---|---|---|
 | `TARGET_URL` | (required) | Site to test |
 | `PLAN_FILE` | `plans/shopping-cart.md` | Plan to execute |
+| `BROWSER_DRIVER` | `playwright` | Browser automation driver |
+| `BROWSER_TYPE` | `chromium` | `chromium`, `firefox` or `webkit` (Playwright driver) |
 | `LLM_PROVIDER` | `ollama` | `ollama` or `claude` |
 | `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` | Ollama endpoint |
 | `OLLAMA_MODEL` | `mistral` | Ollama model name |

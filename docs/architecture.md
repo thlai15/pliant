@@ -10,7 +10,7 @@ loop.
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                        PlanRunner                           │
-│  reads plan → creates Page → drives ExecutionLoop          │
+│  reads plan → creates BrowserDriver → drives ExecutionLoop │
 └─────────────────┬───────────────────────────────────────────┘
                   │
                   ▼
@@ -20,7 +20,7 @@ loop.
 │  for each step selected by StepScheduler:                   │
 │    1. ElementExtractor → candidate elements from live DOM   │
 │    2. SemanticMatcher  → find best element for step intent  │
-│    3. Playwright       → perform the interaction            │
+│    3. BrowserDriver    → perform the interaction            │
 │    4. AssertionEval    → evaluate expects on the step       │
 │    5. ReportBuilder    → record outcome + screenshot        │
 │                                                             │
@@ -40,9 +40,9 @@ loop.
 Entry point. Responsibilities:
 - Parse the plan file using `PlanParser`
 - Read `TARGET_URL` from environment
-- Launch Playwright browser and create `Page`
+- Create the `BrowserDriver` selected by `BROWSER_DRIVER` (currently `PlaywrightDriver`)
 - Inject the event listener tracker script before page navigation
-- Instantiate `ExecutionLoop` and hand it the plan + page
+- Instantiate `ExecutionLoop` and hand it the plan + driver
 - Collect the final run result and pass to `ReportBuilder`
 - Exit with code 0 (all steps passed) or 1 (any step failed)
 
@@ -63,7 +63,7 @@ depending on the retailer. `StepScheduler` picks the right one each time.
 
 The per-step execution engine. For each step:
 
-1. Call `ElementExtractor.extract(page)` to get all interactive candidates
+1. Call `ElementExtractor.extract(driver)` to get all interactive candidates
 2. Call `SemanticMatcher.match(stepIntent, candidates)` to get ranked matches
 3. If top match confidence >= `CONFIDENCE_THRESHOLD` (default 0.75): interact via Playwright
 4. If top match confidence < `CONFIDENCE_THRESHOLD`:
@@ -124,6 +124,23 @@ Selected by `LLM_PROVIDER` environment variable. Instantiated once in `PlanRunne
 down. Never instantiate an LLM client inside a component — always receive it as a constructor
 parameter.
 
+### BrowserDriver (`src/driver/BrowserDriver.ts`)
+
+Interface for every browser interaction: navigation, running scripts in the page, click, type,
+select, key presses, visibility checks and screenshots. Elements are addressed by the CSS
+selector that `ElementExtractor` records for each candidate. One implementation today:
+- `PlaywrightDriver`: Playwright (Chromium, Firefox or WebKit, chosen by `BROWSER_TYPE`)
+
+Selected by `BROWSER_DRIVER` and constructed once in `PlanRunner`, like `LLMClient`.
+Implementations report overlay-blocked clicks as `ClickInterceptedError` and mid-script
+navigations as `ExecutionContextDestroyedError`, so no caller inspects library error messages.
+
+To add a driver (e.g. Puppeteer or Selenium/WebDriver BiDi):
+1. Implement `BrowserDriver` in `src/driver/<Name>Driver.ts`. `addInitScript` must run before
+   the page's own scripts, or listener tracking misses elements (see `docs/locator-strategy.md`).
+2. Add its name to `DriverName` and a case to `createDriver()` in `PlanRunner`.
+3. Copy `tests/unit/driver/PlaywrightDriver.test.ts` for the new driver and make it pass.
+
 ### PlanParser (`src/parser/PlanParser.ts`)
 
 Parses Playwright Planner Markdown into a `TestPlan` domain object. Responsibilities:
@@ -181,16 +198,16 @@ self-contained HTML file — no server required, suitable for sharing.
 Page state (live DOM)
         │
         ▼
-ElementExtractor.extract(page)
+ElementExtractor.extract(driver)
         │ ExtractedElement[]
         ▼
 SemanticMatcher.match(stepIntent, candidates)
         │ MatchResult { elementIndex, confidence, reasoning }
         ▼
-Playwright interaction (click / fill / press)
+BrowserDriver interaction (click / typeText / selectOption / pressKey)
         │
         ▼
-AssertionEvaluator.evaluate(expects, page)
+AssertionEvaluator.evaluate(expects, candidates)
         │ AssertionResult[]
         ▼
 ReportBuilder.recordStep(...)

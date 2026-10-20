@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test'
+import { BrowserDriver } from '@driver/BrowserDriver'
 import { writeFile, mkdir } from 'fs/promises'
 import * as path from 'path'
 import { ExtractedElement, StepScreenshots } from '@types-local/index'
@@ -11,7 +11,7 @@ export class ScreenshotManager {
   constructor(private readonly screenshotDir: string) {}
 
   async capture(
-    page: Page,
+    driver: BrowserDriver,
     element: ExtractedElement | null,
     stepNumber: number
   ): Promise<StepScreenshots> {
@@ -21,7 +21,7 @@ export class ScreenshotManager {
     const fullPath = path.join(this.screenshotDir, `${prefix}-full.png`)
 
     try {
-      const fullBuffer = await page.screenshot({ fullPage: true })
+      const fullBuffer = await driver.screenshot({ fullPage: true })
       await writeFile(fullPath, fullBuffer)
     } catch (error) {
       logger.warn(`Full-page screenshot failed for step ${stepNumber}: ${String(error)}`)
@@ -40,7 +40,7 @@ export class ScreenshotManager {
 
     const elementPath = path.join(this.screenshotDir, `${prefix}-element.png`)
     try {
-      const elBuffer = await page.screenshot({ clip: { x, y, width, height } })
+      const elBuffer = await driver.screenshot({ clip: { x, y, width, height } })
       await writeFile(elementPath, elBuffer)
       return { fullPage: fullPath, element: elementPath }
     } catch (error) {

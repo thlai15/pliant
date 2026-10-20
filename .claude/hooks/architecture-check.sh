@@ -46,6 +46,23 @@ while IFS= read -r line; do
 done < <(grep -rn "import.*ClaudeClient\|import.*OllamaClient" "$PROJ/src/" 2>/dev/null \
   | grep -v '\.gitkeep\|\.d\.ts')
 
+# Rule: only the concrete driver may import a browser library
+while IFS= read -r line; do
+  src_file=$(echo "$line" | cut -d: -f1)
+  [[ "$src_file" == */driver/PlaywrightDriver.ts ]] && continue
+  VIOLATIONS+=("DIRECT-BROWSER-IMPORT (use BrowserDriver; only PlaywrightDriver may import Playwright): $line")
+done < <(grep -rnE "from ['\"](@playwright/test|playwright(-core)?)['\"]" "$PROJ/src/" 2>/dev/null \
+  | grep -v '\.gitkeep\|\.d\.ts')
+
+# Rule: only PlanRunner.ts may import a concrete driver
+while IFS= read -r line; do
+  src_file=$(echo "$line" | cut -d: -f1)
+  [[ "$src_file" == */PlanRunner.ts ]] && continue
+  [[ "$src_file" == */driver/PlaywrightDriver.ts ]] && continue
+  VIOLATIONS+=("DIRECT-DRIVER-IMPORT (only PlanRunner may use concrete drivers): $line")
+done < <(grep -rn "import.*PlaywrightDriver" "$PROJ/src/" 2>/dev/null \
+  | grep -v '\.gitkeep\|\.d\.ts')
+
 if [ ${#VIOLATIONS[@]} -gt 0 ]; then
   {
     echo "=== Architecture boundary violations ==="

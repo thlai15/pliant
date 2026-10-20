@@ -24,6 +24,9 @@ pliant/
 ├── plans/
 │   └── shopping-cart.md         # the demo test plan
 ├── src/
+│   ├── driver/
+│   │   ├── BrowserDriver.ts     # pluggable browser interface
+│   │   └── PlaywrightDriver.ts  # Playwright implementation
 │   ├── runner/
 │   │   ├── PlanRunner.ts        # top-level orchestrator
 │   │   ├── StepScheduler.ts     # out-of-order step matching
@@ -58,10 +61,10 @@ pliant/
 
 ## Architecture in One Paragraph
 
-`PlanRunner` reads the plan, creates a `Page` instance for the target retailer, and hands control
+`PlanRunner` reads the plan, creates a `BrowserDriver` for the target site, and hands control
 to `ExecutionLoop`. For each step, `ElementExtractor` injects JavaScript into the live page to
 build a candidate list of interactive elements with semantic metadata. `SemanticMatcher` sends that
-list plus the step intent to an LLM and gets back the best matching element. Playwright then
+list plus the step intent to an LLM and gets back the best matching element. The driver then
 performs the interaction. After the interaction, the loop evaluates any `expect` assertions on the
 step. For steps with a `rules` block, `RulesParser` provides the formula and `ElementExtractor`
 captures the named values from the UI; the LLM evaluates the formula. The
@@ -87,11 +90,16 @@ the side-by-side comparison report.
    The active client is configured via environment variable. Do not hardcode Claude anywhere outside
    `ClaudeClient.ts`.
 
-5. **Observational validation is out of scope for v1.** Only structural and business logic
+5. **Pluggable browser driver.** `BrowserDriver` is an interface; `PlaywrightDriver` implements it.
+   The active driver is configured via `BROWSER_DRIVER`. Only `src/driver/PlaywrightDriver.ts` may
+   import Playwright, and only `PlanRunner` may construct a concrete driver. Enforced by
+   `tests/unit/architecture/boundaries.test.ts` and `.claude/hooks/architecture-check.sh`.
+
+6. **Observational validation is out of scope for v1.** Only structural and business logic
    validation classes are implemented.
 
-6. **No Playwright test runner.** Pliant is a standalone Node.js program. It uses Playwright
-   as a browser automation library, not as a test framework. There are no `.spec.ts` files for the
+7. **No Playwright test runner.** Pliant is a standalone Node.js program. It drives the browser
+   through `BrowserDriver`, not a test framework. There are no `.spec.ts` files for the
    main runner. Unit tests for the framework itself live in `tests/unit/`.
 
 ## Environment Variables
@@ -104,6 +112,8 @@ OLLAMA_BASE_URL=...            # required when LLM_PROVIDER=ollama, e.g. http://
 OLLAMA_MODEL=mistral           # model name for Ollama
 
 # Execution
+BROWSER_DRIVER=playwright      # "playwright" (the only driver so far)
+BROWSER_TYPE=chromium          # "chromium" | "firefox" | "webkit" (Playwright driver)
 TARGET_URL=https://demowebshop.tricentis.com
 HEADLESS=true                  # "true" | "false"
 SLOW_MO=0                      # milliseconds between actions, useful for demo

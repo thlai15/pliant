@@ -26,6 +26,24 @@ export class CaptureError extends PliantError {
   }
 }
 
+// Raised by a BrowserDriver when another element (usually an overlay) would
+// receive the click instead of the target.
+export class ClickInterceptedError extends PliantError {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'ClickInterceptedError'
+  }
+}
+
+// Raised by a BrowserDriver when a navigation destroys the page's script
+// context while a script is running.
+export class ExecutionContextDestroyedError extends PliantError {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'ExecutionContextDestroyedError'
+  }
+}
+
 export class PlanParseError extends PliantError {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options)

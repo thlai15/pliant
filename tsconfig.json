@@ -16,11 +16,13 @@
     "outDir": "dist",
     "paths": {
       "@runner/*": ["./src/runner/*"],
+      "@driver/*": ["./src/driver/*"],
       "@locator/*": ["./src/locator/*"],
       "@llm/*": ["./src/llm/*"],
       "@parser/*": ["./src/parser/*"],
       "@report/*": ["./src/report/*"],
-      "@types-local/*": ["./src/types/*"]
+      "@types-local/*": ["./src/types/*"],
+      "@fixtures/*": ["./tests/fixtures/*"]
     }
   },
   "include": ["src/**/*.ts", "tests/**/*.ts", "playwright.config.ts"],

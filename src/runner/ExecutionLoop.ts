@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import type { Page } from '@playwright/test'
+import { BrowserDriver } from '@driver/BrowserDriver'
 import { LLMClient } from '@llm/LLMClient'
 import { ElementExtractor } from '@locator/ElementExtractor'
 import { SemanticMatcher } from '@locator/SemanticMatcher'
@@ -15,6 +15,7 @@ import {
   LocatorStrategy, HumanTiming,
 } from '@types-local/index'
 import { CONFIDENCE_THRESHOLD, MIN_CONFIDENCE, MAX_CONSECUTIVE_ADVANCES } from '@types-local/constants'
+import { ClickInterceptedError, ExecutionContextDestroyedError } from '@types-local/errors'
 import { createLogger } from '@types-local/logger'
 
 const logger = createLogger('ExecutionLoop')
@@ -32,18 +33,18 @@ export class ExecutionLoop {
     private readonly planEnricher: PlanEnricher | null = null,
   ) {}
 
-  async run(plan: TestPlan, page: Page, targetUrl: string): Promise<void> {
+  async run(plan: TestPlan, driver: BrowserDriver, targetUrl: string): Promise<void> {
     for (const scenario of plan.scenarios) {
       logger.info(`Running scenario: ${scenario.title}`)
-      await this.runScenario(scenario, page, targetUrl)
+      await this.runScenario(scenario, driver, targetUrl)
     }
   }
 
   // ── scenario loop ───────────────────────────────────────────────────────────
 
-  private async runScenario(scenario: Scenario, page: Page, targetUrl: string): Promise<void> {
-    await page.goto(targetUrl, { waitUntil: 'domcontentloaded' })
-    await waitForSettle(page)
+  private async runScenario(scenario: Scenario, driver: BrowserDriver, targetUrl: string): Promise<void> {
+    await driver.goto(targetUrl)
+    await driver.waitForSettle()
 
     const scheduler = new StepScheduler(scenario.steps)
     let consecutiveRecoveries = 0
@@ -59,10 +60,10 @@ export class ExecutionLoop {
         break
       }
 
-      logger.info(`Attempting step ${step.id} on ${page.url()}: ${step.intent}`)
+      logger.info(`Attempting step ${step.id} on ${await driver.currentUrl()}: ${step.intent}`)
       const result = isNavigationToHome(step.intent)
-        ? await this.executeHomeNavigation(page, targetUrl)
-        : await this.executeStep(step, page)
+        ? await this.executeHomeNavigation(driver, targetUrl)
+        : await this.executeStep(step, driver)
 
       if (result.locatorStrategy !== 'NOT_FOUND') {
         consecutiveRecoveries = 0
@@ -96,7 +97,7 @@ export class ExecutionLoop {
         break
       }
 
-      const recovered = await this.recover(step, scheduler, page)
+      const recovered = await this.recover(step, scheduler, driver)
       if (!recovered) {
         logger.warn(`No recovery available for step ${step.id} — marking failed`)
         consecutiveRecoveries = 0
@@ -109,7 +110,7 @@ export class ExecutionLoop {
 
   // ── per-step execution ──────────────────────────────────────────────────────
 
-  private async executeStep(step: Step, page: Page): Promise<StepResult> {
+  private async executeStep(step: Step, driver: BrowserDriver): Promise<StepResult> {
     const start = Date.now()
     const healingEvents: HealingEvent[] = []
 
@@ -118,13 +119,13 @@ export class ExecutionLoop {
     // assertions and evaluate the formula. Forcing an interaction risks navigating away
     // from the page being validated (e.g. accidentally clicking the Wishlist link).
     if (isValidationOnlyStep(step.intent) && step.rules !== null) {
-      await waitForSettle(page)
-      const freshCandidates = await this.extractor.extract(page)
-      const pageText = await page.evaluate(() => (document.body.innerText ?? '').slice(0, 5000)).catch(() => '')
+      await driver.waitForSettle()
+      const freshCandidates = await this.extractor.extract(driver)
+      const pageText = await readPageText(driver)
       const assertionResults = await this.assertionEvaluator.evaluate(
-        step.expects, freshCandidates, page.url(), false, pageText)
-      const businessRuleResult = await this.ruleEvaluator.evaluate(step.rules, page)
-      const screenshots = await this.screenshotManager.capture(page, null, step.number)
+        step.expects, freshCandidates, await driver.currentUrl(), false, pageText)
+      const businessRuleResult = await this.ruleEvaluator.evaluate(step.rules, driver)
+      const screenshots = await this.screenshotManager.capture(driver, null, step.number)
       const allPassed =
         assertionResults.every(r => r.pass) &&
         (businessRuleResult === null || businessRuleResult.pass)
@@ -147,7 +148,7 @@ export class ExecutionLoop {
       // Dismiss-modal steps close the product drawer after adding an item.
       // If the drawer is already gone (site auto-dismissed it), the step's goal
       // is achieved — fast-pass so execution continues to the next step.
-      const dialogOpen = await anyDialogVisible(page)
+      const dialogOpen = await anyDialogVisible(driver)
       if (!dialogOpen) {
         logger.info(`Step ${step.id} — dialog already closed, fast-passing`)
         return {
@@ -169,7 +170,7 @@ export class ExecutionLoop {
       // We detect it by looking for an open dialog that actually contains an
       // Add-to-Cart button — this distinguishes a product drawer from persistent
       // overlays (e.g. sign-in prompts) that also carry role="dialog".
-      const productDialogOpen = await productDialogWithCartButton(page)
+      const productDialogOpen = await productDialogWithCartButton(driver)
       if (!productDialogOpen) {
         logger.info(`Step ${step.id} requires an open product dialog — none present, marking complete`)
         return this.failedResult(start, null, null, 'SEMANTIC', healingEvents,
@@ -177,12 +178,12 @@ export class ExecutionLoop {
       }
     }
 
-    let candidates = await this.extractor.extract(page).catch(async (err: unknown) => {
+    let candidates = await this.extractor.extract(driver).catch(async (err: unknown) => {
       // SPA navigation mid-evaluate destroys the execution context. Re-settle and retry once.
-      if (String(err).includes('context was destroyed')) {
+      if (err instanceof ExecutionContextDestroyedError) {
         logger.warn('Extraction context destroyed by navigation — re-settling and retrying')
-        await waitForSettle(page)
-        return this.extractor.extract(page)
+        await driver.waitForSettle()
+        return this.extractor.extract(driver)
       }
       throw err
     })
@@ -193,8 +194,8 @@ export class ExecutionLoop {
     if (candidates.length < 5) {
       logger.debug('Too few candidates — waiting for page to fully settle')
       await new Promise<void>(r => setTimeout(r, 5000))
-      await waitForSettle(page)
-      candidates = await this.extractor.extract(page)
+      await driver.waitForSettle()
+      candidates = await this.extractor.extract(driver)
       logger.debug(`Re-extracted ${candidates.length} candidates`)
     }
 
@@ -321,14 +322,14 @@ export class ExecutionLoop {
       }
     }
 
-    const interactOutcome = await this.interact(matchedEl, match.fillValue, page, step.intent)
+    const interactOutcome = await this.interact(matchedEl, match.fillValue, driver, step.intent)
 
     if (!interactOutcome.success) {
       return this.failedResult(start, match, matchedEl, locatorStrategy, healingEvents,
         interactOutcome.error ?? 'Interaction failed')
     }
 
-    await waitForSettle(page)
+    await driver.waitForSettle()
 
     // For click interactions, wait up to 8s for a product dialog/drawer to appear.
     // Some retailers (e.g. Walgreens) make an AJAX call after the Add-to-Cart click
@@ -343,35 +344,26 @@ export class ExecutionLoop {
     // slowly (Walgreens) will show the dialog container within 500ms even if content
     // arrives later, so the full 8s wait is still applied in those cases.
     if (match.fillValue === null) {
-      const dialogSelector = page
-        .locator('[role="dialog"]:not([aria-hidden="true"]) button, .ReactModalPortal button')
-        .filter({ hasText: /add.*(cart|bag)/i })
-        .first()
-      const dialogAppeared = await dialogSelector
-        .waitFor({ state: 'visible', timeout: 500 })
-        .then(() => true)
-        .catch(() => false)
+      const dialogAppeared = await driver.waitForVisible(DIALOG_BUTTON_SELECTOR, 500, { hasText: ADD_TO_CART_TEXT })
       if (dialogAppeared) {
-        await dialogSelector
-          .waitFor({ state: 'visible', timeout: 7500 })
-          .catch(() => {})
+        await driver.waitForVisible(DIALOG_BUTTON_SELECTOR, 7500, { hasText: ADD_TO_CART_TEXT })
       }
     }
 
     // ── assertions ─────────────────────────────────────────────────────────
 
-    const freshCandidates = await this.extractor.extract(page)
-    const productDialogOpen = match.fillValue === null ? await productDialogWithCartButton(page) : false
-    const pageText = await page.evaluate(() => (document.body.innerText ?? '').slice(0, 5000)).catch(() => '')
+    const freshCandidates = await this.extractor.extract(driver)
+    const productDialogOpen = match.fillValue === null ? await productDialogWithCartButton(driver) : false
+    const pageText = await readPageText(driver)
     const assertionResults = await this.assertionEvaluator.evaluate(
-      step.expects, freshCandidates, page.url(), productDialogOpen, pageText)
+      step.expects, freshCandidates, await driver.currentUrl(), productDialogOpen, pageText)
 
     let businessRuleResult: BusinessRuleReport | null = null
     if (step.rules !== null) {
-      businessRuleResult = await this.ruleEvaluator.evaluate(step.rules, page)
+      businessRuleResult = await this.ruleEvaluator.evaluate(step.rules, driver)
     }
 
-    const screenshots = await this.screenshotManager.capture(page, matchedEl, step.number)
+    const screenshots = await this.screenshotManager.capture(driver, matchedEl, step.number)
 
     const allPassed =
       assertionResults.every(r => r.pass) &&
@@ -423,15 +415,15 @@ export class ExecutionLoop {
     await new Promise<void>(r => setTimeout(r, delay))
   }
 
-  private async executeHomeNavigation(page: Page, targetUrl: string): Promise<StepResult> {
+  private async executeHomeNavigation(driver: BrowserDriver, targetUrl: string): Promise<StepResult> {
     const start = Date.now()
-    const current = page.url().replace(/\/$/, '')
+    const current = (await driver.currentUrl()).replace(/\/$/, '')
     const target  = targetUrl.replace(/\/$/, '')
 
     if (!current.startsWith(target)) {
       logger.info(`Not at target URL — navigating to ${targetUrl}`)
-      await page.goto(targetUrl, { waitUntil: 'domcontentloaded' })
-      await waitForSettle(page)
+      await driver.goto(targetUrl)
+      await driver.waitForSettle()
     }
 
     return {
@@ -451,48 +443,45 @@ export class ExecutionLoop {
   private async interact(
     element: ExtractedElement,
     fillValue: string | null,
-    page: Page,
+    driver: BrowserDriver,
     intent: string = '',
   ): Promise<{ success: boolean; error: string | null }> {
+    const selector = element.selector
     try {
-      const locator = page.locator(element.selector).first()
       if (fillValue !== null) {
         if (element.tag === 'select') {
           // selectOption() is the correct API for <select> elements; fill() does nothing.
           // Try exact value match, then exact label, then partial/case-insensitive label
           // so "CA" matches options labeled "CA" OR "California" and vice-versa.
-          await this.selectOption(locator, fillValue, page)
+          await this.selectOption(selector, fillValue, driver)
         } else {
-          // Use pressSequentially instead of fill() so each character fires its own
-          // keydown/keypress/keyup events at a humanlike interval (~85-150 ms).
-          // fill() dispatches all text in one synthetic event with 0 ms between
-          // characters — a strong bot-detection signal on Akamai-protected sites.
+          // Type one character at a time so each fires its own keydown/keypress/keyup
+          // events at a humanlike interval (~85-150 ms). Setting the value in one
+          // synthetic event with 0 ms between characters is a strong bot-detection
+          // signal on Akamai-protected sites.
           // If an overlay (e.g. a product picker modal from the previous step) is
           // still open and intercepts the click, press Escape to dismiss it first.
           try {
-            await locator.click({ timeout: 5000 })
+            await driver.click(selector, { timeoutMs: 5000 })
           } catch (fillClickErr) {
-            if (!String(fillClickErr).includes('intercepts pointer events')) throw fillClickErr
+            if (!(fillClickErr instanceof ClickInterceptedError)) throw fillClickErr
             logger.debug('Overlay blocking fill-click — pressing Escape to dismiss')
-            await page.keyboard.press('Escape')
+            await driver.pressKey('Escape')
             await new Promise<void>(r => setTimeout(r, 600))
-            await locator.click({ timeout: 5000 })
+            await driver.click(selector, { timeoutMs: 5000 })
           }
-          await locator.fill('')
-          await locator.pressSequentially(fillValue, {
-            delay: 85 + Math.floor(Math.random() * 65),
-          })
+          await driver.typeText(selector, fillValue, 85 + Math.floor(Math.random() * 65))
         }
       } else {
-        const urlBefore = page.url()
+        const urlBefore = await driver.currentUrl()
         // Move the mouse toward the element before clicking to produce a natural
         // pointer trajectory — Akamai scores the absence of prior mousemove events.
-        const box = await locator.boundingBox().catch(() => null)
+        const box = await driver.boundingBox(selector)
         if (box !== null) {
-          await page.mouse.move(
+          await driver.moveMouse(
             box.x + Math.round(box.width  * (0.3 + Math.random() * 0.4)),
             box.y + Math.round(box.height * (0.3 + Math.random() * 0.4)),
-            { steps: 3 + Math.floor(Math.random() * 5) },
+            3 + Math.floor(Math.random() * 5),
           )
         }
         // Three-stage click recovery for overlays that intercept pointer events:
@@ -501,18 +490,18 @@ export class ExecutionLoop {
         //  3. Force click — bypasses overlay position check entirely as last resort
         //     (avoids pressing Escape twice, which can clear search field text)
         try {
-          await locator.click({ timeout: 5000 })
+          await driver.click(selector, { timeoutMs: 5000 })
         } catch (firstError) {
-          if (!String(firstError).includes('intercepts pointer events')) throw firstError
+          if (!(firstError instanceof ClickInterceptedError)) throw firstError
           logger.debug('Modal overlay blocking click (attempt 2) — pressing Escape to dismiss')
-          await page.keyboard.press('Escape')
+          await driver.pressKey('Escape')
           await new Promise<void>(r => setTimeout(r, 600))
           try {
-            await locator.click({ timeout: 5000 })
+            await driver.click(selector, { timeoutMs: 5000 })
           } catch {
             // Force-click bypasses overlay position check without another Escape.
             logger.debug('Still blocked after Escape — using force click')
-            await locator.click({ force: true, timeout: 5000 })
+            await driver.click(selector, { force: true, timeoutMs: 5000 })
           }
         }
         // Give SPA/server navigation 200 ms to update the URL, then wait for
@@ -521,8 +510,8 @@ export class ExecutionLoop {
         // updates (add-to-cart notifications, accordion panels) are rendered before
         // assertions capture freshCandidates and pageText.
         await new Promise<void>(r => setTimeout(r, 200))
-        if (page.url() !== urlBefore) {
-          await waitForSettle(page)
+        if (await driver.currentUrl() !== urlBefore) {
+          await driver.waitForSettle()
         } else if (isSearchSubmitIntent(intent)) {
           // URL unchanged after clicking what should be a search submit button.
           // The LLM may have matched an autocomplete container, a review radio button,
@@ -530,28 +519,28 @@ export class ExecutionLoop {
           // first text/search input on the page that has a value) then press Enter —
           // this reliably submits the search regardless of where focus currently is.
           logger.debug('Search-submit click did not navigate — pressing Enter as fallback')
-          await page.evaluate(() => {
+          await driver.evaluate(() => {
             const inputs = Array.from(document.querySelectorAll<HTMLInputElement>(
               'input[type="text"], input[type="search"], input:not([type])',
             ))
             const filled = inputs.find(el => el.value.trim().length > 0)
             if (filled !== undefined) filled.focus()
           })
-          await page.keyboard.press('Enter')
+          await driver.pressKey('Enter')
           await new Promise<void>(r => setTimeout(r, 300))
-          if (page.url() !== urlBefore) {
-            await waitForSettle(page)
+          if (await driver.currentUrl() !== urlBefore) {
+            await driver.waitForSettle()
           }
         } else {
           // URL unchanged and not a search submit: wait for AJAX-driven DOM updates
           // (add-to-cart notifications, accordion panels) before assertions run.
-          await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => {})
+          await driver.waitForSettle(2000)
         }
         // Detect unexpected login-page redirects only for Add-to-Cart actions.
         // Guard against unexpected login-page redirects (e.g. Walgreens' quick-add flow
         // silently redirects to login). Skip the check when the intent explicitly mentions
         // login/checkout — those steps intentionally navigate to a login-gated page.
-        const urlAfter = page.url()
+        const urlAfter = await driver.currentUrl()
         const isIntentionalLoginNav =
           intent.toLowerCase().includes('checkout') ||
           intent.toLowerCase().includes('login') ||
@@ -563,7 +552,7 @@ export class ExecutionLoop {
       }
       return { success: true, error: null }
     } catch (error) {
-      logger.warn(`Interaction failed "${element.selector}": ${String(error)}`)
+      logger.warn(`Interaction failed "${selector}": ${String(error)}`)
       return { success: false, error: String(error) }
     }
   }
@@ -574,16 +563,16 @@ export class ExecutionLoop {
   //   3. Partial/case-insensitive label (e.g. "CA" matches "California"; "California" matches "CA")
   // This handles the state-abbreviation vs full-name ambiguity across retailers.
   private async selectOption(
-    locator: import('@playwright/test').Locator,
+    selector: string,
     value: string,
-    page: Page,
+    driver: BrowserDriver,
   ): Promise<void> {
     const strategies: Array<() => Promise<unknown>> = [
-      () => locator.selectOption(value, { timeout: 3000 }),
-      () => locator.selectOption({ label: value }, { timeout: 3000 }),
+      () => driver.selectOption(selector, { value }),
+      () => driver.selectOption(selector, { label: value }),
       async () => {
         // Collect all option texts and find the best partial/case-insensitive match.
-        const optionTexts = await locator.locator('option').allTextContents()
+        const optionTexts = await driver.optionLabels(selector)
         const lower = value.toLowerCase()
         const match =
           optionTexts.find(t => t.toLowerCase() === lower) ??
@@ -593,7 +582,7 @@ export class ExecutionLoop {
         if (match === undefined) {
           throw new Error(`No <option> matching "${value}" in select (options: ${optionTexts.slice(0, 5).join(', ')})`)
         }
-        await locator.selectOption({ label: match }, { timeout: 3000 })
+        await driver.selectOption(selector, { label: match })
       },
     ]
     let lastError: unknown
@@ -605,7 +594,7 @@ export class ExecutionLoop {
         // after country select) to complete before returning. The 300ms delay gives
         // setTimeout-deferred handlers time to fire before networkidle is checked.
         await new Promise<void>(r => setTimeout(r, 300))
-        await waitForSettle(page)
+        await driver.waitForSettle()
         return
       } catch (err) {
         lastError = err
@@ -628,10 +617,10 @@ export class ExecutionLoop {
   private async recover(
     target: Step,
     scheduler: StepScheduler,
-    page: Page,
+    driver: BrowserDriver,
   ): Promise<boolean> {
     // Phase 1: page-state-driven routing via element hints
-    const candidates = await this.extractor.extract(page).catch((): ExtractedElement[] => [])
+    const candidates = await this.extractor.extract(driver).catch((): ExtractedElement[] => [])
     const applicable = scheduler.findByPageState(candidates)
       .filter(s => s.id !== target.id)
       .sort((a, b) => a.number - b.number)
@@ -640,7 +629,7 @@ export class ExecutionLoop {
       logger.info(`Recovery: ${applicable.length} page-state-applicable step(s) for target ${target.id}`)
       for (const step of applicable) {
         logger.info(`Recovery: executing applicable step ${step.id} (page-state match)`)
-        const result = await this.executeStep(step, page)
+        const result = await this.executeStep(step, driver)
         scheduler.markComplete(step)
         this.reportBuilder.recordStep(step, result)
         logger.info(`Applicable step ${step.id} → ${result.outcome}`)
@@ -651,7 +640,7 @@ export class ExecutionLoop {
     // Phase 2: adjacent step routing and forward affordances
     const adjacent = scheduler.peekAdjacent(target.number, 2)
       .filter(s => s.number < target.number)
-    const affordances = await this.extractor.extractForwardAffordances(page)
+    const affordances = await this.extractor.extractForwardAffordances(driver)
     const affordance = affordances[0] ?? null
 
     const adjacentStep = adjacent[0] ?? null
@@ -668,7 +657,7 @@ export class ExecutionLoop {
     if (adjacentStep !== null && adjacentScore >= affordanceScore) {
       const distance = Math.abs(adjacentStep.number - target.number)
       logger.info(`Recovery: executing adjacent step ${adjacentStep.id} (distance ${distance})`)
-      const result = await this.executeStep(adjacentStep, page)
+      const result = await this.executeStep(adjacentStep, driver)
       scheduler.markComplete(adjacentStep)
       this.reportBuilder.recordStep(adjacentStep, result)
       logger.info(`Adjacent step ${adjacentStep.id} → ${result.outcome}`)
@@ -677,9 +666,9 @@ export class ExecutionLoop {
 
     if (affordance !== null) {
       try {
-        await page.locator(affordance.selector).first().click()
+        await driver.click(affordance.selector)
         logger.info(`Recovery: advanced page via "${affordance.text.slice(0, 60)}"`)
-        await waitForSettle(page)
+        await driver.waitForSettle()
         return true
       } catch (error) {
         logger.warn(`Recovery advance failed: ${String(error)}`)
@@ -690,15 +679,11 @@ export class ExecutionLoop {
     return false
   }
 
-  private async dismissOpenDialog(page: Page): Promise<void> {
-    const open = await page
-      .locator('[role="dialog"][aria-modal="true"]:not([aria-hidden="true"])')
-      .first()
-      .isVisible()
-      .catch(() => false)
+  private async dismissOpenDialog(driver: BrowserDriver): Promise<void> {
+    const open = await driver.isVisible('[role="dialog"][aria-modal="true"]:not([aria-hidden="true"])')
     if (open) {
       logger.debug('Dismissing carry-over modal dialog')
-      await page.keyboard.press('Escape')
+      await driver.pressKey('Escape')
       await new Promise<void>(r => setTimeout(r, 400))
     }
   }
@@ -749,31 +734,21 @@ function stepRequiresOpenDialog(intent: string): boolean {
 // standard ARIA role="dialog" and Walgreens' ReactModalPortal overlay pattern.
 // Distinguishes the product picker from persistent sign-in overlays that carry
 // role="dialog" but contain no cart/bag button.
-async function productDialogWithCartButton(page: Page): Promise<boolean> {
-  return page
-    .locator('[role="dialog"]:not([aria-hidden="true"]) button, .ReactModalPortal button')
-    .filter({ hasText: /add.*(cart|bag)/i })
-    .first()
-    .isVisible()
-    .catch(() => false)
+const DIALOG_BUTTON_SELECTOR = '[role="dialog"]:not([aria-hidden="true"]) button, .ReactModalPortal button'
+const ADD_TO_CART_TEXT = /add.*(cart|bag)/i
+
+async function productDialogWithCartButton(driver: BrowserDriver): Promise<boolean> {
+  return driver.isVisible(DIALOG_BUTTON_SELECTOR, { hasText: ADD_TO_CART_TEXT })
 }
 
 // Returns true when any role="dialog" OR ReactModalPortal overlay is visible —
 // used for dismiss-modal steps where we only care if there is something to close.
-async function anyDialogVisible(page: Page): Promise<boolean> {
-  const ariaDialog = await page
-    .locator('[role="dialog"]:not([aria-hidden="true"])')
-    .first()
-    .isVisible()
-    .catch(() => false)
+async function anyDialogVisible(driver: BrowserDriver): Promise<boolean> {
+  const ariaDialog = await driver.isVisible('[role="dialog"]:not([aria-hidden="true"])')
   if (ariaDialog) return true
   // Walgreens uses a ReactModalPortal pattern (no role="dialog" on the container).
   // Check whether the portal has any rendered children (i.e., a modal is open).
-  return page
-    .locator('.ReactModalPortal > *')
-    .first()
-    .isVisible()
-    .catch(() => false)
+  return driver.isVisible('.ReactModalPortal > *')
 }
 
 // True when the step's purpose is to dismiss/close an open modal or drawer.
@@ -837,15 +812,9 @@ function isNavigationToHome(intent: string): boolean {
   )
 }
 
-async function waitForSettle(page: Page): Promise<void> {
-  try {
-    await page.waitForLoadState('networkidle', { timeout: 5000 })
-  } catch {
-    try {
-      await page.waitForLoadState('domcontentloaded', { timeout: 5000 })
-    } catch {
-      // best-effort — continue regardless
-    }
-  }
+// Visible page text (first 5000 chars) gives the assertion prompt product names,
+// prices and other non-interactive content.
+async function readPageText(driver: BrowserDriver): Promise<string> {
+  return driver.evaluate(() => (document.body.innerText ?? '').slice(0, 5000)).catch(() => '')
 }
 
