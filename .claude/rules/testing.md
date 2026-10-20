@@ -37,7 +37,15 @@ tests/
       StepScheduler.test.ts       # uses mock LLM
     report/
       HtmlReporter.test.ts
+    driver/
+      PlaywrightDriver.test.ts    # BrowserDriver contract, real browser + local HTML fixture
+    runner/
+      ExecutionLoop.test.ts       # loop on FakeDriver + MockLLMClient, no browser
+    architecture/
+      boundaries.test.ts          # only PlaywrightDriver imports Playwright
   fixtures/
+    FakeDriver.ts                 # in-memory BrowserDriver for tests that need no browser
+    MockLLMClient.ts
     plans/
       simple-cart.md              # minimal plan for parser tests
       full-cart.md                # the real demo plan

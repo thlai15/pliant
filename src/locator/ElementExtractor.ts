@@ -1,10 +1,10 @@
 /// <reference lib="dom" />
-import type { Page } from '@playwright/test'
+import { BrowserDriver } from '@driver/BrowserDriver'
 import { ExtractedElement, Region, RelativePosition } from '@types-local/index'
 import { PliantError } from '@types-local/errors'
 import { FORWARD_AFFORDANCE_KEYWORDS } from '@locator/types'
 
-// Extend the browser Window type so page.evaluate code is typed without `any`.
+// Extend the browser Window type so in-page code is typed without `any`.
 declare global {
   interface Window {
     __pliant_listeners?: WeakMap<Element, string[]>
@@ -12,11 +12,11 @@ declare global {
 }
 
 export class ElementExtractor {
-  // Must be called via page.addInitScript() before the first navigation.
+  // Must be called before the first navigation.
   // Wraps addEventListener so that programmatic listeners are tracked in a
   // WeakMap exposed as window.__pliant_listeners.
-  async addListenerTracker(page: Page): Promise<void> {
-    await page.addInitScript(() => {
+  async addListenerTracker(driver: BrowserDriver): Promise<void> {
+    await driver.addInitScript(() => {
       const tracked = new WeakMap<Element, string[]>()
       const original = EventTarget.prototype.addEventListener
       EventTarget.prototype.addEventListener = function (
@@ -36,8 +36,8 @@ export class ElementExtractor {
     })
   }
 
-  async extract(page: Page, includeContentElements = false): Promise<ExtractedElement[]> {
-    const raw: unknown = await page.evaluate((includeContent) => {
+  async extract(driver: BrowserDriver, includeContentElements = false): Promise<ExtractedElement[]> {
+    const raw: unknown = await driver.evaluate((includeContent: boolean) => {
       // ── constants ──────────────────────────────────────────────────────────
       const SEMANTIC_TAGS = new Set(['button', 'a', 'input', 'select', 'textarea'])
       const TRACKED_EVENTS = new Set(['click', 'mousedown', 'keydown', 'keypress', 'change'])
@@ -468,7 +468,7 @@ export class ElementExtractor {
     }, includeContentElements)
 
     if (!isExtractedElementArray(raw)) {
-      throw new PliantError('ElementExtractor: unexpected page.evaluate result shape')
+      throw new PliantError('ElementExtractor: unexpected extraction result shape')
     }
 
     return raw
@@ -476,8 +476,8 @@ export class ElementExtractor {
 
   // Returns elements whose visible text matches any forward-progression keyword.
   // Prefers elements in the "main" region; falls back to any region.
-  async extractForwardAffordances(page: Page): Promise<ExtractedElement[]> {
-    const all = await this.extract(page)
+  async extractForwardAffordances(driver: BrowserDriver): Promise<ExtractedElement[]> {
+    const all = await this.extract(driver)
     const keywords = FORWARD_AFFORDANCE_KEYWORDS as readonly string[]
 
     const matches = all.filter(el => {

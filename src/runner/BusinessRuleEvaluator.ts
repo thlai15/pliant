@@ -1,19 +1,11 @@
-import type { Page } from '@playwright/test'
-import { Parser } from 'expr-eval'
+import { BrowserDriver } from '@driver/BrowserDriver'
 import { ElementExtractor } from '@locator/ElementExtractor'
 import { SemanticMatcher } from '@locator/SemanticMatcher'
 import { BusinessRule, BusinessRuleReport, Region } from '@types-local/index'
 import { createLogger } from '@types-local/logger'
+import { evaluateArithmetic } from '@runner/arithmetic'
 
 const logger = createLogger('BusinessRuleEvaluator')
-
-// Whitelist only the operators needed for Pliant v1 formulas.
-const formulaParser = new Parser({
-  operators: {
-    add: true, subtract: true, multiply: true, divide: true,
-    comparison: false, // we handle comparison ourselves for tolerance support
-  },
-})
 
 export class BusinessRuleEvaluator {
   constructor(
@@ -21,8 +13,8 @@ export class BusinessRuleEvaluator {
     private readonly matcher: SemanticMatcher,
   ) {}
 
-  async evaluate(rule: BusinessRule, page: Page): Promise<BusinessRuleReport> {
-    const allCandidates = await this.extractor.extract(page, true)
+  async evaluate(rule: BusinessRule, driver: BrowserDriver): Promise<BusinessRuleReport> {
+    const allCandidates = await this.extractor.extract(driver, true)
     const capturedValues: Record<string, number> = {}
 
     // Business rule captures look for displayed values (prices, totals) — these live in
@@ -92,7 +84,7 @@ function parseNumericValue(text: string): number | null {
 }
 
 // Evaluate both sides of the comparison, then apply tolerance to equality.
-function evaluateFormula(rule: BusinessRule, values: Record<string, number>): BusinessRuleReport {
+export function evaluateFormula(rule: BusinessRule, values: Record<string, number>): BusinessRuleReport {
   const compMatch = /^(.+?)\s*(==|!=|<=|>=|<|>)\s*(.+)$/.exec(rule.formula)
   if (compMatch === null) {
     return {
@@ -119,8 +111,8 @@ function evaluateFormula(rule: BusinessRule, values: Record<string, number>): Bu
   let lhs: number
   let rhs: number
   try {
-    lhs = formulaParser.evaluate(lhsExpr.trim(), values as Record<string, number & string>)
-    rhs = formulaParser.evaluate(rhsExpr.trim(), values as Record<string, number & string>)
+    lhs = evaluateArithmetic(lhsExpr, values)
+    rhs = evaluateArithmetic(rhsExpr, values)
   } catch (error) {
     return {
       ruleId: rule.id, formula: rule.formula,

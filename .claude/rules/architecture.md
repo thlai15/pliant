@@ -8,6 +8,7 @@ because it is "close enough." If a new responsibility does not fit cleanly, crea
 | Component | Owns | Does NOT own |
 |---|---|---|
 | `PlanRunner` | Orchestration, lifecycle | Parsing, matching, reporting |
+| `BrowserDriver` | Browser automation (one implementation per library) | Matching, assertions, reporting |
 | `StepScheduler` | Step selection logic | Interaction, assertion |
 | `ExecutionLoop` | Per-step execution flow | Scheduling, reporting |
 | `ElementExtractor` | DOM traversal, JS injection | LLM calls, matching |
@@ -27,7 +28,7 @@ PlanRunner
   → PlanParser
   → ReportBuilder
   → LLMClient (interface)
-  → Playwright Page
+  → BrowserDriver (interface) — the only place a concrete driver is constructed
 
 ExecutionLoop
   → ElementExtractor
@@ -51,14 +52,22 @@ BusinessRuleEvaluator
 No component reaches "up" to its caller. No component imports from `runner/` from within
 `locator/` or `report/`. Dependencies flow downward only.
 
-## Playwright Boundary
+## Browser Boundary
 
-Playwright `Page` and `Browser` objects must not cross the boundary into `locator/`, `llm/`, or
-`report/`. They are confined to `runner/` and `ElementExtractor`. `ScreenshotManager` receives a
-`Page` object because it must call `page.screenshot()`, but it does nothing else with the page.
+All browser access goes through the `BrowserDriver` interface in `src/driver/BrowserDriver.ts`.
+Only `src/driver/PlaywrightDriver.ts` may import `@playwright/test` (or any other browser
+library), and only `PlanRunner` may construct a concrete driver. Components receive a
+`BrowserDriver` and never a library object such as Playwright's `Page` or `Locator`.
 
-`ElementExtractor` is the only component in `locator/` that holds a reference to `Page`.
+Drivers translate library failures into the typed errors in `src/types/errors.ts`
+(`ClickInterceptedError`, `ExecutionContextDestroyedError`). Never branch on a library's error
+message text outside a driver.
+
+The driver reaches `runner/`, `ElementExtractor` and `ScreenshotManager` only.
+`ElementExtractor` is the only component in `locator/` that holds a driver.
 `SemanticMatcher` receives only `ExtractedElement[]` — it never touches the page.
+
+Enforced by `tests/unit/architecture/boundaries.test.ts` and `.claude/hooks/architecture-check.sh`.
 
 ## LLM Boundary
 

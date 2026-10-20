@@ -189,6 +189,8 @@ export interface RunReport {
   steps: StepReport[]
 }
 
+import type { DriverName } from '@driver/BrowserDriver'
+
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 export type LLMProvider    = 'claude' | 'ollama'
@@ -207,6 +209,7 @@ export interface RunConfig {
   llmProvider: LLMProvider
   reportOutputDir: string
   planFile: string
+  driver: DriverName
   browserType: BrowserType
   humanTiming: HumanTiming
 }

@@ -1,7 +1,8 @@
-import { chromium, firefox, webkit } from '@playwright/test'
 import { readFile } from 'fs/promises'
 import * as path from 'path'
 import { PlanParser } from '@parser/PlanParser'
+import { BrowserDriver, DriverName } from '@driver/BrowserDriver'
+import { PlaywrightDriver } from '@driver/PlaywrightDriver'
 import { LLMClient } from '@llm/LLMClient'
 import { ClaudeClient } from '@llm/ClaudeClient'
 import { OllamaClient } from '@llm/OllamaClient'
@@ -24,7 +25,7 @@ const logger = createLogger('PlanRunner')
 
 async function main(): Promise<void> {
   const config = readConfig()
-  logger.info(`Target: ${config.targetUrl}  LLM: ${config.llmProvider}  Plan: ${config.planFile}`)
+  logger.info(`Target: ${config.targetUrl}  LLM: ${config.llmProvider}  Driver: ${config.driver}  Plan: ${config.planFile}`)
 
   const parser = new PlanParser()
   const plan = await parser.parseFile(config.planFile)
@@ -46,30 +47,17 @@ async function main(): Promise<void> {
     llm, extractor, matcher, assertEval, ruleEval, screenshotMgr, reportBuilder, config.humanTiming, enricher,
   )
 
-  const browserModule = config.browserType === 'firefox' ? firefox
-    : config.browserType === 'webkit' ? webkit
-    : chromium
-
-  // Chromium gets an extra arg to suppress the automation banner; Firefox/WebKit do not.
-  const launchOptions = config.browserType === 'chromium'
-    ? { headless: config.headless, slowMo: config.slowMo, args: ['--disable-blink-features=AutomationControlled'] }
-    : { headless: config.headless, slowMo: config.slowMo }
-
-  const browser = await browserModule.launch(launchOptions)
+  const driver = await createDriver(config)
 
   let runFailed = false
   try {
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 800 },
-    })
-    const page = await context.newPage()
-    await extractor.addListenerTracker(page)
-    await loop.run(plan, page, config.targetUrl)
+    await extractor.addListenerTracker(driver)
+    await loop.run(plan, driver, config.targetUrl)
   } catch (err) {
     logger.error(`Run aborted: ${String(err)}`)
     runFailed = true
   } finally {
-    await browser.close().catch(() => {})
+    await driver.close().catch(() => {})
   }
 
   // Always attempt to write the report, even when the run was aborted mid-flight.
@@ -106,6 +94,12 @@ function readConfig(): RunConfig {
     stepDelayMax:  Number(process.env['STEP_DELAY_MAX'] ?? (humanTimingEnabled ? 1800 : 0)),
   }
 
+  const driverRaw = (process.env['BROWSER_DRIVER'] ?? 'playwright').toLowerCase()
+  if (driverRaw !== 'playwright') {
+    throw new Error(`Unsupported BROWSER_DRIVER "${driverRaw}" (supported: playwright)`)
+  }
+  const driver: DriverName = driverRaw
+
   const browserTypeRaw = (process.env['BROWSER_TYPE'] ?? 'chromium').toLowerCase()
   const browserType: BrowserType =
     browserTypeRaw === 'firefox' ? 'firefox'
@@ -119,8 +113,22 @@ function readConfig(): RunConfig {
     llmProvider,
     reportOutputDir: process.env['REPORT_OUTPUT_DIR'] ?? './reports',
     planFile:        process.env['PLAN_FILE'] ?? 'plans/shopping-cart.md',
+    driver,
     browserType,
     humanTiming,
+  }
+}
+
+// The only place a concrete driver is constructed. Add new drivers here.
+async function createDriver(config: RunConfig): Promise<BrowserDriver> {
+  switch (config.driver) {
+    case 'playwright':
+      return PlaywrightDriver.launch({
+        browserType: config.browserType,
+        headless:    config.headless,
+        slowMo:      config.slowMo,
+        viewport:    { width: 1280, height: 800 },
+      })
   }
 }
 
