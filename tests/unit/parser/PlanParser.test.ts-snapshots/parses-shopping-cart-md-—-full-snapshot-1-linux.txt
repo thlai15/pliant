@@ -1,0 +1,197 @@
+{
+  "title": "Shopping Cart Validation — Cross-Retailer Test Plan",
+  "scenarios": [
+    {
+      "title": "1. Add Items to Cart and Validate Subtotal",
+      "steps": [
+        {
+          "id": "1",
+          "number": 1,
+          "intent": "Navigate to the retailer home page",
+          "expects": [
+            "Home page is displayed"
+          ],
+          "rules": null,
+          "stop": false,
+          "after": [],
+          "element": null
+        },
+        {
+          "id": "2",
+          "number": 2,
+          "intent": "Enter \"jeans\" into the search field",
+          "expects": [
+            "The search field accepts input"
+          ],
+          "rules": null,
+          "stop": false,
+          "after": [],
+          "element": null
+        },
+        {
+          "id": "3",
+          "number": 3,
+          "intent": "Click the search button",
+          "expects": [
+            "Search results are displayed",
+            "At least one jeans product is visible in the results"
+          ],
+          "rules": null,
+          "stop": false,
+          "after": [],
+          "element": null
+        },
+        {
+          "id": "4",
+          "number": 4,
+          "intent": "Click \"Add to cart\" for the jeans product in the search results",
+          "expects": [
+            "The jeans product is added to the cart"
+          ],
+          "rules": null,
+          "stop": false,
+          "after": [],
+          "element": null
+        },
+        {
+          "id": "5",
+          "number": 5,
+          "intent": "Click \"Add to cart\" on the product detail page if one opened instead of a direct add",
+          "expects": [
+            "Cart count or confirmation indicator updates"
+          ],
+          "rules": null,
+          "stop": false,
+          "after": [],
+          "element": null
+        },
+        {
+          "id": "6",
+          "number": 6,
+          "intent": "Enter \"belt\" into the search field",
+          "expects": [
+            "The search field accepts input"
+          ],
+          "rules": null,
+          "stop": false,
+          "after": [],
+          "element": null
+        },
+        {
+          "id": "7",
+          "number": 7,
+          "intent": "Click the search button",
+          "expects": [
+            "Search results are displayed",
+            "At least one belt product is visible in the results"
+          ],
+          "rules": null,
+          "stop": false,
+          "after": [],
+          "element": null
+        },
+        {
+          "id": "8",
+          "number": 8,
+          "intent": "Click \"Add to cart\" for the belt product in the search results",
+          "expects": [
+            "The belt product is added to the cart"
+          ],
+          "rules": null,
+          "stop": false,
+          "after": [],
+          "element": null
+        },
+        {
+          "id": "9",
+          "number": 9,
+          "intent": "Validate the cart subtotal calculation",
+          "expects": [
+            "A subtotal or order total amount is displayed"
+          ],
+          "rules": {
+            "id": "subtotal_validation",
+            "formula": "subtotal == item_1_price + item_2_price",
+            "tolerance": 0.01,
+            "captures": [
+              {
+                "name": "item_1_price",
+                "semantic": "unit price of jeans item",
+                "region": "main"
+              },
+              {
+                "name": "item_2_price",
+                "semantic": "unit price of belt item",
+                "region": "main"
+              },
+              {
+                "name": "subtotal",
+                "semantic": "the cart sub-total or order total for all items combined",
+                "region": "main"
+              }
+            ]
+          },
+          "stop": false,
+          "after": [],
+          "element": null
+        },
+        {
+          "id": "10",
+          "number": 10,
+          "intent": "Click the checkout button or \"Proceed to Checkout\" link",
+          "expects": [
+            "Checkout flow begins"
+          ],
+          "rules": null,
+          "stop": false,
+          "after": [
+            "9"
+          ],
+          "element": null
+        },
+        {
+          "id": "11",
+          "number": 11,
+          "intent": "Enter \"test@example.com\" into the email address field",
+          "expects": [
+            "Email address field is present and accepts input"
+          ],
+          "rules": null,
+          "stop": false,
+          "after": [
+            "10"
+          ],
+          "element": null
+        },
+        {
+          "id": "12",
+          "number": 12,
+          "intent": "Enter \"John\" into the first name field",
+          "expects": [
+            "Name field is present and accepts input"
+          ],
+          "rules": null,
+          "stop": false,
+          "after": [
+            "10"
+          ],
+          "element": null
+        },
+        {
+          "id": "13",
+          "number": 13,
+          "intent": "Click \"Continue\" to proceed past guest checkout",
+          "expects": [
+            "Billing address or contact information form is displayed"
+          ],
+          "rules": null,
+          "stop": true,
+          "after": [
+            "10"
+          ],
+          "element": null
+        }
+      ]
+    }
+  ]
+}

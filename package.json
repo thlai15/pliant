@@ -1,0 +1,43 @@
+{
+  "name": "pliant",
+  "version": "1.0.0",
+  "description": "Plan-driven, self-healing test execution framework",
+  "private": true,
+  "scripts": {
+    "demo": "node --env-file=.env -r ts-node/register -r tsconfig-paths/register src/runner/PlanRunner.ts",
+    "report": "node --env-file=.env -r ts-node/register -r tsconfig-paths/register src/report/HtmlReporter.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "playwright test",
+    "lint": "eslint src tests --ext .ts",
+    "review": "bash .claude/scripts/run-review.sh",
+    "review:feedback": "bash .claude/scripts/feedback.sh",
+    "review:compress": "bash .claude/scripts/compress-kb.sh"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "expr-eval": "^2.0.2",
+    "js-yaml": "^4.1.0"
+  },
+  "ts-node": {
+    "compilerOptions": {
+      "module": "CommonJS",
+      "moduleResolution": "node"
+    }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.7.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thlai15/pliant.git"
+  }
+}

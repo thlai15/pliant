@@ -1,0 +1,22 @@
+{
+  "id": "subtotal_validation",
+  "formula": "subtotal == item_1_price + item_2_price",
+  "tolerance": 0.01,
+  "captures": [
+    {
+      "name": "item_1_price",
+      "semantic": "unit price or each price of the first item in the cart",
+      "region": "main"
+    },
+    {
+      "name": "item_2_price",
+      "semantic": "unit price or each price of the second item in the cart",
+      "region": "main"
+    },
+    {
+      "name": "subtotal",
+      "semantic": "subtotal or estimated total before tax and shipping",
+      "region": "main"
+    }
+  ]
+}

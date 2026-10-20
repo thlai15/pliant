@@ -1,0 +1,25 @@
+node_modules/
+dist/
+*.js.map
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Run reports and screenshots (may contain data typed into forms)
+reports/
+screenshots/
+*.png
+!tests/**/*.png
+
+# Playwright output
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Browser session state
+cf-session.json
+*-session.json
+storage-state*.json

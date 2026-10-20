@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "stats": {
+    "total_reviews": 0,
+    "total_findings": 0,
+    "last_compressed_at": null,
+    "compression_count": 0
+  },
+  "suppressions": [],
+  "patterns": [
+    {
+      "severity": "high",
+      "description": "Domain-specific intent predicate in matchElement.ts: function checks for shopping/e-commerce vocabulary (cart, product, checkout, buy, purchase, add to cart) to decide which candidates to pre-filter. Violates the domain-agnostic rule in architecture.md.",
+      "occurrences": 1
+    },
+    {
+      "severity": "high",
+      "description": "Domain-specific guard in ExecutionLoop.ts: an if-block inspects the step intent for domain nouns (cart, product, checkout) to decide whether or how to call interact(). Violates the domain-agnostic rule — guards must be generic (e.g. isFillableTag) or removed.",
+      "occurrences": 1
+    }
+  ],
+  "high_risk_areas": [
+    "src/llm/prompts/matchElement.ts — pre-filter functions must remain generic (action-type-based), never domain-specific. See architecture.md §Domain-Agnostic Design.",
+    "src/runner/ExecutionLoop.ts — guards around interact() must not test for shopping/e-commerce intent vocabulary."
+  ],
+  "recent_findings": []
+}

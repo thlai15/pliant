@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Search Results — Clorox Products</title>
+  <style>
+    /* Ensure elements have non-zero dimensions for visibility checks */
+    body { font-family: sans-serif; margin: 0; }
+    nav, main, footer { display: block; padding: 8px; }
+    article { border: 1px solid #ccc; margin: 8px 0; padding: 8px; }
+    .product-link { cursor: pointer; font-weight: bold; }
+    .price { color: #c00; }
+    button, input, a { display: inline-block; padding: 4px 8px; }
+    #hidden-btn { display: none; }
+    #aria-hidden-btn { visibility: hidden; }
+  </style>
+</head>
+<body>
+
+  <nav aria-label="Site Navigation">
+    <a href="/" id="home-link">Home</a>
+    <button id="cart-btn" aria-label="Cart (2 items)">Cart (2)</button>
+  </nav>
+
+  <main>
+    <form role="search" aria-label="Product Search">
+      <input id="search-input" type="text" placeholder="Search products" aria-label="Search products">
+      <button type="submit" id="search-btn">Search</button>
+    </form>
+
+    <section aria-label="Search Results">
+
+      <!-- Product 1: has a non-semantic div with a programmatic listener -->
+      <article aria-label="Clorox Toilet Bowl Cleaner">
+        <div class="product-link" data-testid="product-1-link">
+          Clorox Toilet Bowl Cleaner with Bleach
+        </div>
+        <span class="price">$3.97</span>
+        <button class="add-to-cart" aria-label="Add Clorox Toilet Bowl Cleaner to cart">
+          Add to cart
+        </button>
+        <a href="/save/1" class="save-link">Save for later</a>
+      </article>
+
+      <!-- Product 2 -->
+      <article aria-label="Clorox All Purpose Cleaner">
+        <div class="product-link" data-testid="product-2-link">
+          Clorox All Purpose Cleaner Crisp Lemon
+        </div>
+        <span class="price">$5.47</span>
+        <button class="add-to-cart" aria-label="Add Clorox All Purpose Cleaner to cart">
+          Add to cart
+        </button>
+        <a href="/save/2" class="save-link">Save for later</a>
+      </article>
+
+    </section>
+
+    <!-- Inline onclick handler on a non-semantic element -->
+    <div id="inline-handler-div" onclick="void(0)">Inline handler element</div>
+
+  </main>
+
+  <footer>
+    <!-- Forward-affordance element for extractForwardAffordances() tests -->
+    <button id="proceed-btn">Proceed to checkout</button>
+  </footer>
+
+  <!-- Elements that must NOT be extracted -->
+  <button id="hidden-btn">Hidden button</button>
+  <button id="aria-hidden-btn" aria-hidden="true">Aria-hidden button</button>
+
+  <script>
+    // These click listeners are added programmatically.
+    // When addListenerTracker() has been called first, they will be captured
+    // in window.__pliant_listeners and the divs will appear in extract() output.
+    document.querySelectorAll('.product-link').forEach(function (div) {
+      div.addEventListener('click', function () { /* navigate */ });
+    });
+
+    // Additional keydown listener on the search input
+    var searchInput = document.getElementById('search-input');
+    if (searchInput) {
+      searchInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { /* submit */ }
+      });
+    }
+  </script>
+
+</body>
+</html>
