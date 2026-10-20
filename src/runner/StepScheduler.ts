@@ -1,7 +1,4 @@
 import { Step, ExtractedElement, ElementHint } from '@types-local/index'
-import { createLogger } from '@types-local/logger'
-
-const logger = createLogger('StepScheduler')
 
 export class StepScheduler {
   private readonly pending = new Map<string, Step>()

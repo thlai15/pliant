@@ -17,7 +17,6 @@ actual prices from the UI at runtime. Domain knowledge belongs in the plan, not 
 ```
 pliant/
 ├── CLAUDE.md                    # this file
-├── CLAUDE_SETUP.md              # project setup prompt for new environments
 ├── playwright.config.ts
 ├── tsconfig.json
 ├── package.json
@@ -106,9 +105,11 @@ the side-by-side comparison report.
 
 ```
 # LLM selection
-LLM_PROVIDER=claude           # "claude" | "ollama"
-ANTHROPIC_API_KEY=...         # required when LLM_PROVIDER=claude
-OLLAMA_BASE_URL=...            # required when LLM_PROVIDER=ollama, e.g. http://localhost:11434
+LLM_PROVIDER=ollama            # "ollama" (default) | "claude"
+ANTHROPIC_API_KEY=...          # required when LLM_PROVIDER=claude
+CLAUDE_MODEL=claude-opus-5-5   # any Claude model ID
+CLAUDE_EFFORT=low              # low|medium|high|xhigh|max, or none for models without effort
+OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=mistral           # model name for Ollama
 
 # Execution
@@ -117,6 +118,7 @@ BROWSER_TYPE=chromium          # "chromium" | "firefox" | "webkit" (Playwright d
 TARGET_URL=https://demowebshop.tricentis.com
 HEADLESS=true                  # "true" | "false"
 SLOW_MO=0                      # milliseconds between actions, useful for demo
+HUMAN_TIMING=false             # true adds STEP_DELAY_MIN..STEP_DELAY_MAX ms between steps
 
 # Report
 REPORT_OUTPUT_DIR=./reports
@@ -136,8 +138,11 @@ TARGET_URL=https://demowebshop.tricentis.com npm run demo
 TARGET_URL=https://demo.nopcommerce.com npm run demo
 
 # Generate comparison report (after both runs)
-npm run report
+npm run report -- --run-a reports/<run-id-1> --run-b reports/<run-id-2>
 ```
+
+Runs never modify the plan file. Element hints learned during a run go to
+`reports/<run-id>/enriched-plan.md`; a person decides whether to copy them into the plan.
 
 ## Rules Files
 

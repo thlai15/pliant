@@ -56,7 +56,7 @@ export class ReportBuilder {
     const outcome = deriveRunOutcome(this.steps)
     const report: RunReport = {
       runId:       this.runId,
-      retailer:    new URL(this.config.targetUrl).hostname,
+      site:        new URL(this.config.targetUrl).hostname,
       targetUrl:   this.config.targetUrl,
       planFile:    this.config.planFile,
       startedAt:   this.startedAt,

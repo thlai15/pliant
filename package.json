@@ -8,13 +8,13 @@
     "report": "node --env-file=.env -r ts-node/register -r tsconfig-paths/register src/report/HtmlReporter.ts",
     "typecheck": "tsc --noEmit",
     "test": "playwright test",
-    "lint": "eslint src tests --ext .ts",
+    "lint": "eslint src tests",
     "review": "bash .claude/scripts/run-review.sh",
     "review:feedback": "bash .claude/scripts/feedback.sh",
     "review:compress": "bash .claude/scripts/compress-kb.sh"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.52.0",
+    "@anthropic-ai/sdk": "^0.137.0",
     "js-yaml": "^4.1.0"
   },
   "ts-node": {

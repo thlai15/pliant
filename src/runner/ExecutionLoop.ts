@@ -332,17 +332,15 @@ export class ExecutionLoop {
     await driver.waitForSettle()
 
     // For click interactions, wait up to 8s for a product dialog/drawer to appear.
-    // Some retailers (e.g. Walgreens) make an AJAX call after the Add-to-Cart click
-    // to determine store inventory and delivery options before rendering the picker
-    // modal — this can take 5-8 s and outlasts the networkidle wait above.
-    // The combined ARIA-dialog + ReactModalPortal selector covers both standard sites
-    // and Walgreens' portal-based overlay pattern. Best-effort; timeout is swallowed.
+    // Some sites make a slow AJAX call after an Add-to-Cart click before rendering a
+    // picker modal, which can outlast the networkidle wait above. The combined
+    // ARIA-dialog + ReactModalPortal selector covers standard dialogs and portal-based
+    // overlays. Best-effort; timeout is swallowed.
     //
     // Optimization: first check if the dialog starts to appear within 500ms. If it does
     // not, skip the full 8s wait so freshCandidates is captured while page notifications
-    // (e.g. "item added" banners) are still visible. Sites where the dialog truly loads
-    // slowly (Walgreens) will show the dialog container within 500ms even if content
-    // arrives later, so the full 8s wait is still applied in those cases.
+    // (e.g. "item added" banners) are still visible. Slow dialogs still show their
+    // container within 500ms, so the full wait applies in those cases.
     if (match.fillValue === null) {
       const dialogAppeared = await driver.waitForVisible(DIALOG_BUTTON_SELECTOR, 500, { hasText: ADD_TO_CART_TEXT })
       if (dialogAppeared) {
@@ -406,8 +404,8 @@ export class ExecutionLoop {
 
   // ── helpers ─────────────────────────────────────────────────────────────────
 
-  // Pause for a random interval between steps to mimic human reading/thinking time.
-  // No-op when humanTiming is disabled (fast mode).
+  // Optional pause between steps (HUMAN_TIMING=true), for apps that need time to
+  // settle between actions or when watching a run. Off by default.
   private async stepJitter(): Promise<void> {
     if (!this.humanTiming.enabled) return
     const { stepDelayMin, stepDelayMax } = this.humanTiming
@@ -456,9 +454,8 @@ export class ExecutionLoop {
           await this.selectOption(selector, fillValue, driver)
         } else {
           // Type one character at a time so each fires its own keydown/keypress/keyup
-          // events at a humanlike interval (~85-150 ms). Setting the value in one
-          // synthetic event with 0 ms between characters is a strong bot-detection
-          // signal on Akamai-protected sites.
+          // events, as a real user's typing does. Autocomplete, input masks and
+          // validation handlers often listen for these and ignore a value set in one go.
           // If an overlay (e.g. a product picker modal from the previous step) is
           // still open and intercepts the click, press Escape to dismiss it first.
           try {
@@ -474,8 +471,8 @@ export class ExecutionLoop {
         }
       } else {
         const urlBefore = await driver.currentUrl()
-        // Move the mouse toward the element before clicking to produce a natural
-        // pointer trajectory — Akamai scores the absence of prior mousemove events.
+        // Move the pointer onto the element before clicking so hover-driven UI
+        // (menus, tooltips, lazily attached handlers) reacts as it would for a user.
         const box = await driver.boundingBox(selector)
         if (box !== null) {
           await driver.moveMouse(
@@ -536,9 +533,8 @@ export class ExecutionLoop {
           // (add-to-cart notifications, accordion panels) before assertions run.
           await driver.waitForSettle(2000)
         }
-        // Detect unexpected login-page redirects only for Add-to-Cart actions.
-        // Guard against unexpected login-page redirects (e.g. Walgreens' quick-add flow
-        // silently redirects to login). Skip the check when the intent explicitly mentions
+        // Guard against unexpected login-page redirects (some quick-add flows silently
+        // redirect to login). Skip the check when the intent explicitly mentions
         // login/checkout — those steps intentionally navigate to a login-gated page.
         const urlAfter = await driver.currentUrl()
         const isIntentionalLoginNav =
@@ -731,7 +727,7 @@ function stepRequiresOpenDialog(intent: string): boolean {
 
 // Returns true when a product drawer/modal is open — detected by finding an
 // Add-to-Cart (or Add-to-Bag) button inside any visible dialog. Checks both
-// standard ARIA role="dialog" and Walgreens' ReactModalPortal overlay pattern.
+// standard ARIA role="dialog" and the ReactModalPortal overlay pattern.
 // Distinguishes the product picker from persistent sign-in overlays that carry
 // role="dialog" but contain no cart/bag button.
 const DIALOG_BUTTON_SELECTOR = '[role="dialog"]:not([aria-hidden="true"]) button, .ReactModalPortal button'
@@ -746,7 +742,7 @@ async function productDialogWithCartButton(driver: BrowserDriver): Promise<boole
 async function anyDialogVisible(driver: BrowserDriver): Promise<boolean> {
   const ariaDialog = await driver.isVisible('[role="dialog"]:not([aria-hidden="true"])')
   if (ariaDialog) return true
-  // Walgreens uses a ReactModalPortal pattern (no role="dialog" on the container).
+  // Some React sites render modals in a ReactModalPortal with no role="dialog".
   // Check whether the portal has any rendered children (i.e., a modal is open).
   return driver.isVisible('.ReactModalPortal > *')
 }

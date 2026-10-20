@@ -36,7 +36,9 @@ tests/
     scheduler/
       StepScheduler.test.ts       # uses mock LLM
     report/
-      HtmlReporter.test.ts
+      PlanEnricher.test.ts        # enriched copy only; the source plan is never written
+    llm/
+      ClaudeClient.test.ts        # request shape, against a local fake Messages API
     driver/
       PlaywrightDriver.test.ts    # BrowserDriver contract, real browser + local HTML fixture
     runner/
@@ -47,14 +49,10 @@ tests/
     FakeDriver.ts                 # in-memory BrowserDriver for tests that need no browser
     MockLLMClient.ts
     plans/
-      simple-cart.md              # minimal plan for parser tests
-      full-cart.md                # the real demo plan
+      shopping-cart.md            # plan used by the parser tests
     html/
       search-results.html         # local HTML for ElementExtractor tests
-      cart-page.html
-    runs/
-      site-a-run.json
-      site-b-run.json
+      driver-contract.html        # local HTML for the BrowserDriver contract tests
 ```
 
 Test files are co-located with their fixture directories, not with `src/`.

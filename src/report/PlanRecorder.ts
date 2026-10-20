@@ -34,11 +34,11 @@ function buildMarkdown(report: RunReport): string {
   const total = report.steps.length
 
   const lines: string[] = [
-    `# Shopping Cart Validation — Execution Record`,
+    `# Execution Record — ${path.basename(report.planFile)}`,
     ``,
     `<!-- run: ${report.runId} -->`,
     `<!-- date: ${date} -->`,
-    `<!-- retailer: ${report.targetUrl} -->`,
+    `<!-- target: ${report.targetUrl} -->`,
     `<!-- source-plan: ${report.planFile} -->`,
     `<!-- outcome: ${report.outcome} | ${passCount}/${total} passed${healCount ? ` (${healCount} healed)` : ''} -->`,
     ``,

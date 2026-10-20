@@ -115,6 +115,11 @@ If filtering reduces the list below 5, remove the filter and send up to 50 from 
 
 Never use temperature > 0 in Pliant v1. Consistency matters more than variety.
 
+`temperature` reaches Ollama only. Current Claude models reject sampling parameters, so
+`ClaudeClient` leaves it out and uses `output_config.effort` (`CLAUDE_EFFORT`, default `low`).
+Claude also thinks before answering and those tokens count toward `max_tokens`, so
+`ClaudeClient` raises the per-prompt budgets below to a 16000-token floor.
+
 ### Token budget
 
 | Prompt type | Typical input tokens | Max output tokens |

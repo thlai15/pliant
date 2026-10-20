@@ -19,6 +19,15 @@ export class LLMApiError extends PliantError {
   }
 }
 
+// The model declined the request (stop_reason "refusal"). Retrying the same request
+// would be declined again, so callers should not retry.
+export class LLMRefusalError extends LLMApiError {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'LLMRefusalError'
+  }
+}
+
 export class CaptureError extends PliantError {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options)

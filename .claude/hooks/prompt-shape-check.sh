@@ -6,7 +6,8 @@
 INPUT=$(cat)
 FILE=$(echo "$INPUT" | jq -r '.tool_input.file_path // ""')
 
-[[ "$FILE" != */pliant/src/llm/prompts/*.ts ]] && exit 0
+HOOK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+[[ "$FILE" != "$HOOK_ROOT"/src/llm/prompts/*.ts ]] && exit 0
 [[ "$FILE" == *.d.ts ]] && exit 0
 [ ! -f "$FILE" ] && exit 0
 
