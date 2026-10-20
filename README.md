@@ -37,8 +37,17 @@ cp .env.example .env    # then edit .env
 npm run demo
 ```
 
-`npm run demo` runs [plans/shopping-cart.md](plans/shopping-cart.md) against `TARGET_URL`.
-Run it once per site, then build a side-by-side comparison of the two runs:
+`npm run demo` runs [plans/shopping-cart.md](plans/shopping-cart.md) against `TARGET_URL`
+(the Tricentis demo shop in `.env.example`). Each run writes to `reports/<run-id>/`:
+
+- `run.json` and `screenshots/`: the full step-by-step record
+- `plan-comparison.html`: the plan next to what actually ran
+- `recorded-plan.md`: the steps as executed
+- `enriched-plan.md`: a copy of your plan with element hints from this run, written only when the
+  run learned something. Pliant never modifies your plan file. If the new hints look right, copy
+  this file over your plan so later runs start from them.
+
+Run the plan once per site, then build a side-by-side comparison of the two runs:
 
 ```bash
 npm run report -- --run-a reports/<run-id-1> --run-b reports/<run-id-2>
@@ -53,11 +62,14 @@ npm run report -- --run-a reports/<run-id-1> --run-b reports/<run-id-2>
 | `BROWSER_DRIVER` | `playwright` | Browser automation driver |
 | `BROWSER_TYPE` | `chromium` | `chromium`, `firefox` or `webkit` (Playwright driver) |
 | `LLM_PROVIDER` | `ollama` | `ollama` or `claude` |
-| `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` | Ollama endpoint |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama endpoint (from a dev container, usually `http://host.docker.internal:11434`) |
 | `OLLAMA_MODEL` | `mistral` | Ollama model name |
 | `ANTHROPIC_API_KEY` | | Required when `LLM_PROVIDER=claude` |
+| `CLAUDE_MODEL` | `claude-opus-5-5` | Claude model ID |
+| `CLAUDE_EFFORT` | `low` | `low`, `medium`, `high`, `xhigh`, `max`, or `none` for models without effort control |
 | `HEADLESS` | `true` | Show the browser with `false` |
 | `SLOW_MO` | `0` | Delay between Playwright actions (ms) |
+| `HUMAN_TIMING` | `false` | `true` adds a pause between steps (`STEP_DELAY_MIN`/`STEP_DELAY_MAX`, ms) |
 | `REPORT_OUTPUT_DIR` | `./reports` | Where run data and reports are written |
 
 ## Writing a plan
@@ -65,7 +77,12 @@ npm run report -- --run-a reports/<run-id-1> --run-b reports/<run-id-2>
 A plan is Markdown with numbered steps. Each step can carry `expect:` assertions, `after:`
 dependencies, `stop: true`, and a fenced `rules` block for business-rule checks. The format is
 documented in [docs/plan-format.md](docs/plan-format.md). The included shopping-cart plan is an
-example; plans for other kinds of apps need no code changes.
+example.
+
+The runner is meant to stay domain-agnostic, with all app knowledge in the plan. A few
+heuristics in `ExecutionLoop` still recognise e-commerce patterns, such as a dialog with an
+"Add to cart" button, so plans for other kinds of apps may need adjustments there. Contributions
+that move those into generic logic are welcome.
 
 ## Development
 
@@ -74,6 +91,8 @@ npm run typecheck
 npm test            # unit tests (Playwright test runner, local HTML fixtures only)
 npm run lint
 ```
+
+CI runs the same three checks on every push and pull request.
 
 `CLAUDE.md` and `.claude/` hold the project rules and hooks used when developing with Claude Code.
 

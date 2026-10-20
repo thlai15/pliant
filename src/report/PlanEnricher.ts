@@ -1,15 +1,32 @@
-import { readFile, writeFile } from 'fs/promises'
+import { copyFile, mkdir, readFile, writeFile } from 'fs/promises'
+import * as path from 'path'
 import { ElementHint, ExtractedElement } from '@types-local/index'
 import { CONFIDENCE_THRESHOLD } from '@types-local/constants'
 import { createLogger } from '@types-local/logger'
 
 const logger = createLogger('PlanEnricher')
 
-// Writes element context hints back into the plan file after each successful step.
+// Records element context hints for each successful step in a copy of the plan.
+// The copy lives in the run's output directory; the source plan is never modified.
+// The user decides whether to adopt the enriched copy.
 // Guards: only writes when confidence is high enough AND the matched element label
 // is plausibly related to the step intent, preventing corrupted hints from wrong matches.
 export class PlanEnricher {
-  constructor(private readonly planFile: string) {}
+  private outputReady = false
+
+  constructor(
+    private readonly sourcePlanFile: string,
+    readonly outputPlanFile: string,
+  ) {
+    if (path.resolve(sourcePlanFile) === path.resolve(outputPlanFile)) {
+      throw new Error('PlanEnricher output must differ from the source plan')
+    }
+  }
+
+  // True once at least one hint has been written to the output copy.
+  get wroteOutput(): boolean {
+    return this.outputReady
+  }
 
   async enrich(
     stepNumber: number,
@@ -48,9 +65,10 @@ export class PlanEnricher {
 
     let content: string
     try {
-      content = await readFile(this.planFile, 'utf-8')
+      await this.ensureOutputCopy()
+      content = await readFile(this.outputPlanFile, 'utf-8')
     } catch (err) {
-      logger.warn(`Could not read plan file for enrichment: ${String(err)}`)
+      logger.warn(`Could not prepare enriched plan copy: ${String(err)}`)
       return
     }
 
@@ -58,11 +76,18 @@ export class PlanEnricher {
     if (updated === content) return
 
     try {
-      await writeFile(this.planFile, updated, 'utf-8')
+      await writeFile(this.outputPlanFile, updated, 'utf-8')
       logger.debug(`Enriched step ${stepNumber}: label="${hint.label}" container=[${hint.container.join(', ')}]`)
     } catch (err) {
-      logger.warn(`Could not write plan file after enrichment: ${String(err)}`)
+      logger.warn(`Could not write enriched plan copy: ${String(err)}`)
     }
+  }
+
+  private async ensureOutputCopy(): Promise<void> {
+    if (this.outputReady) return
+    await mkdir(path.dirname(this.outputPlanFile), { recursive: true })
+    await copyFile(this.sourcePlanFile, this.outputPlanFile)
+    this.outputReady = true
   }
 }
 

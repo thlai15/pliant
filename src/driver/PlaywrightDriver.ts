@@ -28,10 +28,7 @@ export class PlaywrightDriver implements BrowserDriver {
       : options.browserType === 'webkit' ? webkit
       : chromium
 
-    // Chromium gets an extra arg to suppress the automation banner; Firefox/WebKit do not.
-    const launchOptions = options.browserType === 'chromium'
-      ? { headless: options.headless, slowMo: options.slowMo, args: ['--disable-blink-features=AutomationControlled'] }
-      : { headless: options.headless, slowMo: options.slowMo }
+    const launchOptions = { headless: options.headless, slowMo: options.slowMo }
 
     const browser = await browserModule.launch(launchOptions)
     try {

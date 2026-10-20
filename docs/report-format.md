@@ -13,12 +13,12 @@ The HTML report is the primary demo artefact.
 
 Written to `REPORT_OUTPUT_DIR/<run-id>/run.json`.
 
-`<run-id>` is `<retailer-hostname>-<ISO-timestamp>`, e.g. `demowebshop.tricentis.com-2025-06-04T14-32-00`.
+`<run-id>` is `<site-hostname>-<ISO-timestamp>`, e.g. `demowebshop.tricentis.com-2025-06-04T14-32-00`.
 
 ```typescript
 interface RunReport {
   runId: string
-  retailer: string          // TARGET_URL hostname
+  site: string              // TARGET_URL hostname
   targetUrl: string
   planFile: string
   startedAt: string         // ISO 8601

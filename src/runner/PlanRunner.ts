@@ -1,10 +1,9 @@
-import { readFile } from 'fs/promises'
 import * as path from 'path'
 import { PlanParser } from '@parser/PlanParser'
 import { BrowserDriver, DriverName } from '@driver/BrowserDriver'
 import { PlaywrightDriver } from '@driver/PlaywrightDriver'
 import { LLMClient } from '@llm/LLMClient'
-import { ClaudeClient } from '@llm/ClaudeClient'
+import { ClaudeClient, ClaudeEffort, DEFAULT_CLAUDE_EFFORT, DEFAULT_CLAUDE_MODEL } from '@llm/ClaudeClient'
 import { OllamaClient } from '@llm/OllamaClient'
 import { ElementExtractor } from '@locator/ElementExtractor'
 import { SemanticMatcher } from '@locator/SemanticMatcher'
@@ -42,7 +41,8 @@ async function main(): Promise<void> {
   const matcher    = new SemanticMatcher(llm)
   const assertEval = new AssertionEvaluator(llm)
   const ruleEval   = new BusinessRuleEvaluator(extractor, matcher)
-  const enricher   = new PlanEnricher(config.planFile)
+  const runDir     = path.join(config.reportOutputDir, runId)
+  const enricher   = new PlanEnricher(config.planFile, path.join(runDir, 'enriched-plan.md'))
   const loop       = new ExecutionLoop(
     llm, extractor, matcher, assertEval, ruleEval, screenshotMgr, reportBuilder, config.humanTiming, enricher,
   )
@@ -67,8 +67,13 @@ async function main(): Promise<void> {
   const report = await reportBuilder.finishRun()
   logger.info(`Run complete: ${report.outcome} (${report.steps.length} steps)`)
 
-  const runDir = path.join(config.reportOutputDir, runId)
   await new PlanRecorder().write(report, runDir)
+  if (enricher.wroteOutput) {
+    logger.info(
+      `Element hints from this run: ${enricher.outputPlanFile} — ` +
+      `review it and copy it over ${config.planFile} only if the new hints are better`,
+    )
+  }
   await new HtmlReporter().generatePlanComparison(
     runDir,
     path.join(runDir, 'plan-comparison.html'),
@@ -87,7 +92,7 @@ function readConfig(): RunConfig {
   const llmProvider: LLMProvider =
     llmProviderRaw === 'ollama' ? 'ollama' : 'claude'
 
-  const humanTimingEnabled = (process.env['HUMAN_TIMING'] ?? 'true') !== 'false'
+  const humanTimingEnabled = (process.env['HUMAN_TIMING'] ?? 'false') === 'true'
   const humanTiming: HumanTiming = {
     enabled:       humanTimingEnabled,
     stepDelayMin:  Number(process.env['STEP_DELAY_MIN'] ?? (humanTimingEnabled ? 600  : 0)),
@@ -136,16 +141,30 @@ function createLLMClient(config: RunConfig): LLMClient {
   if (config.llmProvider === 'claude') {
     const apiKey = process.env['ANTHROPIC_API_KEY'] ?? ''
     if (apiKey === '') throw new Error('ANTHROPIC_API_KEY is required when LLM_PROVIDER=claude')
-    return new ClaudeClient(apiKey)
+    return new ClaudeClient(apiKey, { model: resolveLLMModel(config), effort: readClaudeEffort() })
   }
-  const baseUrl = process.env['OLLAMA_BASE_URL'] ?? 'http://host.docker.internal:11434'
-  const model   = process.env['OLLAMA_MODEL']    ?? 'mistral'
-  return new OllamaClient(baseUrl, model)
+  const baseUrl = process.env['OLLAMA_BASE_URL'] ?? DEFAULT_OLLAMA_BASE_URL
+  return new OllamaClient(baseUrl, resolveLLMModel(config))
 }
 
+const DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434'
+const DEFAULT_OLLAMA_MODEL = 'mistral'
+const CLAUDE_EFFORTS: readonly ClaudeEffort[] = ['low', 'medium', 'high', 'xhigh', 'max']
+
 function resolveLLMModel(config: RunConfig): string {
-  if (config.llmProvider === 'claude') return 'claude-sonnet-4-20250514'
-  return process.env['OLLAMA_MODEL'] ?? 'mistral'
+  if (config.llmProvider === 'claude') return process.env['CLAUDE_MODEL'] || DEFAULT_CLAUDE_MODEL
+  return process.env['OLLAMA_MODEL'] || DEFAULT_OLLAMA_MODEL
+}
+
+// CLAUDE_EFFORT=none omits the effort setting, for models that do not accept one.
+function readClaudeEffort(): ClaudeEffort | null {
+  const raw = (process.env['CLAUDE_EFFORT'] || DEFAULT_CLAUDE_EFFORT).toLowerCase()
+  if (raw === 'none') return null
+  const effort = CLAUDE_EFFORTS.find(e => e === raw)
+  if (effort === undefined) {
+    throw new Error(`Unsupported CLAUDE_EFFORT "${raw}" (supported: ${CLAUDE_EFFORTS.join(', ')}, none)`)
+  }
+  return effort
 }
 
 function createRunId(targetUrl: string): string {

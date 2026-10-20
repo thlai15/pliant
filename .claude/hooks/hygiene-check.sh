@@ -12,7 +12,8 @@ INPUT=$(cat)
 FILE=$(echo "$INPUT" | jq -r '.tool_input.file_path // ""')
 
 [[ "$FILE" != *.ts ]] && exit 0
-[[ "$FILE" != */pliant/src/* ]] && exit 0
+HOOK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+[[ "$FILE" != "$HOOK_ROOT"/src/* ]] && exit 0
 [ ! -f "$FILE" ] && exit 0
 
 VIOLATIONS=()

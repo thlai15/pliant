@@ -178,7 +178,7 @@ export interface StepReport {
 
 export interface RunReport {
   runId: string
-  retailer: string
+  site: string
   targetUrl: string
   planFile: string
   startedAt: string

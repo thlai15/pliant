@@ -390,7 +390,8 @@ export class ElementExtractor {
           const tag = cur.tagName.toLowerCase()
           const parent: Element | null = cur.parentElement
           if (parent === null) break
-          const sameTag = Array.from<Element>(parent.children).filter(c => c.tagName === cur!.tagName)
+          const curTagName = cur.tagName
+          const sameTag = Array.from<Element>(parent.children).filter(c => c.tagName === curTagName)
           if (sameTag.length > 1) {
             parts.unshift(`${tag}:nth-of-type(${sameTag.indexOf(cur) + 1})`)
           } else {

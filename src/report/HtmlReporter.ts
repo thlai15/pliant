@@ -147,20 +147,20 @@ function buildHtml(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Pliant — ${esc(runA.retailer)} vs ${esc(runB.retailer)}</title>
+<title>Pliant — ${esc(runA.site)} vs ${esc(runB.site)}</title>
 <style>${CSS}</style>
 </head>
 <body>
 <header>
   <div class="hdr-top">
     <span class="brand">Pliant</span>
-    <span class="hdr-vs">${esc(runA.retailer)} <em>vs</em> ${esc(runB.retailer)}</span>
+    <span class="hdr-vs">${esc(runA.site)} <em>vs</em> ${esc(runB.site)}</span>
     <span class="hdr-meta">Plan: ${esc(planFile)} &nbsp;·&nbsp; ${esc(dateStr)}</span>
   </div>
   <div class="summary-bar">
-    <span>${esc(runA.retailer)}: <strong>${sumA}</strong></span>
+    <span>${esc(runA.site)}: <strong>${sumA}</strong></span>
     <span class="sep">|</span>
-    <span>${esc(runB.retailer)}: <strong>${sumB}</strong></span>
+    <span>${esc(runB.site)}: <strong>${sumB}</strong></span>
   </div>
 </header>
 <div class="layout">
@@ -170,8 +170,8 @@ function buildHtml(
   </section>
 </div>
 <script>
-const LABEL_A=${JSON.stringify(runA.retailer)};
-const LABEL_B=${JSON.stringify(runB.retailer)};
+const LABEL_A=${JSON.stringify(runA.site)};
+const LABEL_B=${JSON.stringify(runB.site)};
 const STEPS=${JSON.stringify(steps)};
 ${BROWSER_JS}
 </script>
@@ -209,7 +209,7 @@ function dedupe<T>(arr: T[]): T[] {
 function isRunReport(v: unknown): v is RunReport {
   if (typeof v !== 'object' || v === null) return false
   const o = v as Record<string, unknown>
-  return typeof o['runId'] === 'string' && typeof o['retailer'] === 'string' &&
+  return typeof o['runId'] === 'string' && typeof o['site'] === 'string' &&
          typeof o['planFile'] === 'string' && Array.isArray(o['steps'])
 }
 
@@ -446,7 +446,7 @@ function buildPlanComparisonHtml(report: RunReport, screenshots: Map<string, Enc
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Pliant — Plan vs Execution: ${esc(report.retailer)}</title>
+<title>Pliant — Plan vs Execution: ${esc(report.site)}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#1a1a2e;background:#f0f2f5}
@@ -489,7 +489,7 @@ td{padding:8px 10px;vertical-align:top;border-bottom:1px solid #edf0f7;font-size
 <body>
 <header>
   <span class="brand">Pliant</span>
-  <span class="hdr-title">Plan vs Execution &nbsp;·&nbsp; ${esc(report.retailer)}</span>
+  <span class="hdr-title">Plan vs Execution &nbsp;·&nbsp; ${esc(report.site)}</span>
   <span class="hdr-meta">${esc(report.planFile)} &nbsp;·&nbsp; ${esc(date)}</span>
 </header>
 <div class="summary">

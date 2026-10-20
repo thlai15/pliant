@@ -101,14 +101,19 @@ export function matchElementPrompt(
     const hintLabel = elementHint.label.toLowerCase().slice(0, 30)
     const hintContainer = elementHint.container.map(c => c.toLowerCase())
 
-    const scoreForHint = (el: ExtractedElement): number => {
-      const elLabel = (el.label ?? el.text).toLowerCase().slice(0, 30)
-      const elPath  = el.path.toLowerCase()
-      const labelScore = elLabel === hintLabel ? 2
+    // An empty label never matches: "".includes check would otherwise give every
+    // unlabelled element a free label point.
+    const labelScoreFor = (el: ExtractedElement): number => {
+      const elLabel = (el.label ?? el.text).trim().toLowerCase().slice(0, 30)
+      if (elLabel === '' || hintLabel === '') return 0
+      return elLabel === hintLabel ? 2
         : elLabel.includes(hintLabel) || hintLabel.includes(elLabel) ? 1 : 0
+    }
+    const scoreForHint = (el: ExtractedElement): number => {
+      const elPath = el.path.toLowerCase()
       const containerScore = hintContainer.reduce(
         (sum, hc) => sum + (elPath.includes(hc.slice(0, 15)) ? 1 : 0), 0)
-      return labelScore + containerScore
+      return labelScoreFor(el) + containerScore
     }
 
     const hintMatches  = deduplicated.filter(el => scoreForHint(el) > 0)
@@ -116,8 +121,11 @@ export function matchElementPrompt(
     const hintMatchSet = new Set(hintMatches.map(el => el.index))
     const remaining    = deduplicated.filter(el => !hintMatchSet.has(el.index))
     orderedMap = [...hintMatches, ...remaining].slice(0, MAX_CANDIDATES)
-    // Only promote the top element when it actually matches the hint — not a remaining element.
-    topHintMatch = hintMatches.length > 0 ? (hintMatches[0] ?? null) : null
+    // Name a "best match" only when its label matches the hint. A container-only match
+    // (e.g. any element inside "Shopping cart") is too weak to override the intent, which
+    // matters when the hint was recorded on a different site.
+    const top = hintMatches[0]
+    topHintMatch = top !== undefined && labelScoreFor(top) > 0 ? top : null
   } else {
     orderedMap = deduplicated.slice(0, MAX_CANDIDATES)
   }
