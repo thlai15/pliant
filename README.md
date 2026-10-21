@@ -96,6 +96,11 @@ CI runs the same three checks on every push and pull request.
 
 `CLAUDE.md` and `.claude/` hold the project rules and hooks used when developing with Claude Code.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Report security issues privately as described in
+[SECURITY.md](SECURITY.md).
+
 ## Responsible use
 
 Only run Pliant against sites you own or have permission to test. The bundled plan targets public
