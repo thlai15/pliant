@@ -11,10 +11,12 @@ import { ReportBuilder } from '@report/ReportBuilder'
 import { PlanEnricher } from '@report/PlanEnricher'
 import {
   TestPlan, Scenario, Step, MatchResult, ExtractedElement,
-  BusinessRuleReport, HealingEvent, StepResult, StepOutcome,
+  AssertionReport, BusinessRuleReport, HealingEvent, StepResult, StepOutcome,
   LocatorStrategy, HumanTiming,
 } from '@types-local/index'
-import { CONFIDENCE_THRESHOLD, MIN_CONFIDENCE, MAX_CONSECUTIVE_ADVANCES } from '@types-local/constants'
+import {
+  CONFIDENCE_THRESHOLD, MIN_CONFIDENCE, MAX_CONSECUTIVE_ADVANCES, ASSERTION_RECHECK_DELAY_MS,
+} from '@types-local/constants'
 import { ClickInterceptedError, ExecutionContextDestroyedError } from '@types-local/errors'
 import { createLogger } from '@types-local/logger'
 
@@ -353,8 +355,9 @@ export class ExecutionLoop {
     const freshCandidates = await this.extractor.extract(driver)
     const productDialogOpen = match.fillValue === null ? await productDialogWithCartButton(driver) : false
     const pageText = await readPageText(driver)
-    const assertionResults = await this.assertionEvaluator.evaluate(
+    let assertionResults = await this.assertionEvaluator.evaluate(
       step.expects, freshCandidates, await driver.currentUrl(), productDialogOpen, pageText)
+    assertionResults = await this.recheckFailedAssertions(assertionResults, driver, productDialogOpen)
 
     let businessRuleResult: BusinessRuleReport | null = null
     if (step.rules !== null) {
@@ -403,6 +406,29 @@ export class ExecutionLoop {
   }
 
   // ── helpers ─────────────────────────────────────────────────────────────────
+
+  // Content that loads in the background after an action (an AJAX checkout section, a
+  // results panel) can still be missing when the first check runs. Give the page one
+  // more chance: wait, let it settle, and re-evaluate only the expectations that failed.
+  private async recheckFailedAssertions(
+    results: AssertionReport[],
+    driver: BrowserDriver,
+    productDialogOpen: boolean,
+  ): Promise<AssertionReport[]> {
+    const failed = results.filter(r => !r.pass).map(r => r.expect)
+    if (failed.length === 0) return results
+
+    logger.debug(`${failed.length} assertion(s) failed — rechecking after ${ASSERTION_RECHECK_DELAY_MS}ms`)
+    await new Promise<void>(r => setTimeout(r, ASSERTION_RECHECK_DELAY_MS))
+    await driver.waitForSettle()
+    const candidates = await this.extractor.extract(driver)
+    const pageText = await readPageText(driver)
+    const rechecked = await this.assertionEvaluator.evaluate(
+      failed, candidates, await driver.currentUrl(), productDialogOpen, pageText)
+
+    const byExpect = new Map(rechecked.map(r => [r.expect, r]))
+    return results.map(r => (r.pass ? r : byExpect.get(r.expect) ?? r))
+  }
 
   // Optional pause between steps (HUMAN_TIMING=true), for apps that need time to
   // settle between actions or when watching a run. Off by default.

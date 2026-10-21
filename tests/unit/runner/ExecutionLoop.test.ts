@@ -32,8 +32,10 @@ function matchResponse(elementIndex: number, fillValue: string | null): string {
 }
 
 const PASS = JSON.stringify({ pass: true, reasoning: 'test' })
+const FAIL = JSON.stringify({ pass: false, reasoning: 'not visible yet' })
 
-async function setup() {
+// assertionAnswers: per-assertion response sequences, checked before the default PASS.
+async function setup(assertionAnswers: Record<string, string[]> = {}) {
   const reportDir = await mkdtemp(path.join(os.tmpdir(), 'pliant-loop-'))
   const config: RunConfig = {
     targetUrl: TARGET, headless: true, slowMo: 0, llmProvider: 'ollama',
@@ -70,6 +72,9 @@ async function setup() {
 
   llm.setResponse('Enter "widget" into the search field', matchResponse(0, 'widget'))
   llm.setResponse('Click the search button', matchResponse(1, null))
+  for (const [assertion, answers] of Object.entries(assertionAnswers)) {
+    llm.setResponseSequence(`"${assertion}"`, answers)
+  }
   llm.setResponse('evaluating whether a natural language assertion holds', PASS)
 
   const plan: TestPlan = {
@@ -83,7 +88,7 @@ async function setup() {
     }],
   }
 
-  return { loop, driver, plan, reportBuilder, cleanup: () => rm(reportDir, { recursive: true, force: true }) }
+  return { loop, driver, plan, reportBuilder, llm, cleanup: () => rm(reportDir, { recursive: true, force: true }) }
 }
 
 test.describe('ExecutionLoop on a non-Playwright driver', () => {
@@ -122,6 +127,38 @@ test.describe('ExecutionLoop on a non-Playwright driver', () => {
       expect(report.steps.map(s => s.outcome)).toEqual(['PASS', 'PASS'])
       expect(driver.callsTo('pressKey')).toContainEqual(['Escape'])
       expect(driver.callsTo('click').map(args => args[0])).toEqual(['#q', '#go', '#go'])
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test('rechecks an assertion that fails before background content loads', async () => {
+    const { loop, driver, plan, reportBuilder, llm, cleanup } = await setup({
+      'Search results are displayed': [FAIL, PASS],
+    })
+    try {
+      await loop.run(plan, driver, TARGET)
+      const report = await reportBuilder.finishRun()
+      const assertionCalls = llm.calls.filter(c => c.user.includes('"Search results are displayed"'))
+
+      expect(report.steps.map(s => s.outcome)).toEqual(['PASS', 'PASS'])
+      expect(assertionCalls).toHaveLength(2)
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test('still fails an assertion that fails again on recheck, checking only once more', async () => {
+    const { loop, driver, plan, reportBuilder, llm, cleanup } = await setup({
+      'Search results are displayed': [FAIL, FAIL, PASS],
+    })
+    try {
+      await loop.run(plan, driver, TARGET)
+      const report = await reportBuilder.finishRun()
+      const assertionCalls = llm.calls.filter(c => c.user.includes('"Search results are displayed"'))
+
+      expect(report.steps.map(s => s.outcome)).toEqual(['PASS', 'FAIL'])
+      expect(assertionCalls).toHaveLength(2)
     } finally {
       await cleanup()
     }
